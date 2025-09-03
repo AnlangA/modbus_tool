@@ -1,28 +1,72 @@
 use eframe::epaint::text::{FontInsert, InsertFontFamily};
 use eframe::{App, egui, icon_data};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Page {
+    Home,
+    Server,
+    Client,
+}
+
+impl Default for Page {
+    fn default() -> Self {
+        Page::Home
+    }
+}
+
+#[derive(Default)]
 pub struct ModbusTool {
-    name: String,
-    age: u32,
+    page: Page,
 }
 
 impl ModbusTool {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         add_font(&cc.egui_ctx);
-        Self {
-            name: "Arthur".to_owned(),
-            age: 42,
-        }
+        Self::default()
+    }
+    fn home_page(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.heading("主页");
+        });
+    }
+
+    fn server_page(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.heading("服务器");
+        });
+    }
+
+    fn client_page(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.heading("客户端");
+        });
+    }
+
+    fn about_page(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.heading("关于");
+        });
     }
 }
 
 impl App for ModbusTool {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("你好");
-            ui.label(format!("Name: {}", self.name));
-            ui.label(format!("Age: {}", self.age));
+        // 顶部菜单栏
+        egui::TopBottomPanel::top("top_menu").show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                egui::widgets::global_theme_preference_switch(ui);
+                ui.separator();
+                ui.selectable_value(&mut self.page, Page::Home, "主页");
+                ui.selectable_value(&mut self.page, Page::Server, "服务器");
+                ui.selectable_value(&mut self.page, Page::Client, "客户端");
+            });
         });
+
+        match self.page {
+            Page::Home => self.home_page(ctx, frame),
+            Page::Server => self.server_page(ctx, frame),
+            Page::Client => self.client_page(ctx, frame),
+        }
     }
 }
 
@@ -46,3 +90,5 @@ fn add_font(ctx: &egui::Context) {
         ],
     ));
 }
+
+//创建顶部菜单
