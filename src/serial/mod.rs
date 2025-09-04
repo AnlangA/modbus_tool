@@ -1,0 +1,17 @@
+use eframe::*;
+
+pub struct SerialPort {}
+
+impl Default for SerialPort {
+    fn default() -> Self {
+        SerialPort {}
+    }
+}
+
+impl SerialPort {
+    pub fn show(&mut self, _ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        egui::CentralPanel::default().show(_ctx, |ui| {
+            ui.label("串口设置界面");
+        });
+    }
+}

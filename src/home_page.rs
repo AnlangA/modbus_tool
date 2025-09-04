@@ -1,3 +1,6 @@
+use crate::client::Client;
+use crate::serial::SerialPort;
+use crate::server::Server;
 use eframe::epaint::text::{FontInsert, InsertFontFamily};
 use eframe::{App, egui, icon_data};
 
@@ -17,6 +20,9 @@ impl Default for Page {
 #[derive(Default)]
 pub struct ModbusTool {
     page: Page,
+    serial: SerialPort,
+    server: Server,
+    client: Client,
 }
 
 impl ModbusTool {
@@ -25,27 +31,15 @@ impl ModbusTool {
         Self::default()
     }
     fn home_page(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("主页");
-        });
+        self.serial.show(ctx, frame);
     }
 
     fn server_page(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("服务器");
-        });
+        self.server.show(ctx, frame);
     }
 
     fn client_page(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("客户端");
-        });
-    }
-
-    fn about_page(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("关于");
-        });
+        self.client.show(ctx, frame);
     }
 }
 
