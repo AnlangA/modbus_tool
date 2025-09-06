@@ -1,11 +1,22 @@
 use eframe::*;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio_serial::*;
+use tokio_util::sync::CancellationToken;
 
 pub struct SerialPort {
     list: Vec<(String, String)>,
     selected: String,
-    settings: PortSettings,
+    //多线程可用
+    settings: Arc<Mutex<PortSettings>>,
+    //是否开启、关闭串口的标志
+    is_open: bool,
+    //port打开之后，设置发生变化了需要更新设置
+    need_update: bool,
+    //取消令牌，用于取消异步任务
+    cancel_token: CancellationToken,
+    //异步任务句柄，用于取消异步任务
+    task_handle: Option<tokio::task::JoinHandle<()>>,
 }
 
 pub struct PortSettings {
@@ -47,7 +58,11 @@ impl Default for SerialPort {
         let mut port = SerialPort {
             list: Vec::new(),
             selected: String::new(),
-            settings: PortSettings::default(),
+            settings: Arc::new(Mutex::new(PortSettings::default())),
+            is_open: false,
+            need_update: false,
+            cancel_token: CancellationToken::new(),
+            task_handle: None,
         };
         port.list_ports();
         port.selected = port
@@ -62,7 +77,7 @@ impl Default for SerialPort {
 impl SerialPort {
     pub fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("串口设置");
+            self.show_connection_buttons(ui);
             ui.separator();
 
             egui::Grid::new("serial_settings_grid")
@@ -79,9 +94,6 @@ impl SerialPort {
                     self.show_timeout_input(ui);
                     self.show_dtr_checkbox(ui);
                 });
-
-            ui.add_space(10.0);
-            self.show_connection_buttons(ui);
         });
     }
 
@@ -107,62 +119,78 @@ impl SerialPort {
 
     fn show_baud_rate_selector(&mut self, ui: &mut egui::Ui) {
         ui.label("波特率:");
-        ui.horizontal(|ui| {
-            ui.add(egui::DragValue::new(&mut self.settings.baud_rate).speed(100));
-            ui.label("bps");
-        });
+        let mut settings = self.settings.lock().unwrap();
+        egui::ComboBox::from_id_salt("baud_rate_selector")
+            .selected_text(format!("{}", settings.baud_rate))
+            .show_ui(ui, |ui| {
+                let common_baud_rates = [
+                    300, 600, 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800,
+                    921600,
+                ];
+                for &baud_rate in &common_baud_rates {
+                    ui.selectable_value(
+                        &mut settings.baud_rate,
+                        baud_rate,
+                        format!("{}", baud_rate),
+                    );
+                }
+            });
         ui.end_row();
     }
 
     fn show_data_bits_selector(&mut self, ui: &mut egui::Ui) {
         ui.label("数据位:");
+        let mut settings = self.settings.lock().unwrap();
         egui::ComboBox::from_id_salt("data_bits_selector")
-            .selected_text(format!("{:?}", self.settings.data_bits))
+            .selected_text(format!("{:?}", settings.data_bits))
             .show_ui(ui, |ui| {
-                ui.selectable_value(&mut self.settings.data_bits, DataBits::Five, "5");
-                ui.selectable_value(&mut self.settings.data_bits, DataBits::Six, "6");
-                ui.selectable_value(&mut self.settings.data_bits, DataBits::Seven, "7");
-                ui.selectable_value(&mut self.settings.data_bits, DataBits::Eight, "8");
+                ui.selectable_value(&mut settings.data_bits, DataBits::Five, "5");
+                ui.selectable_value(&mut settings.data_bits, DataBits::Six, "6");
+                ui.selectable_value(&mut settings.data_bits, DataBits::Seven, "7");
+                ui.selectable_value(&mut settings.data_bits, DataBits::Eight, "8");
             });
         ui.end_row();
     }
 
     fn show_stop_bits_selector(&mut self, ui: &mut egui::Ui) {
         ui.label("停止位:");
+        let mut settings = self.settings.lock().unwrap();
         egui::ComboBox::from_id_salt("stop_bits_selector")
-            .selected_text(format!("{:?}", self.settings.stop_bits))
+            .selected_text(format!("{:?}", settings.stop_bits))
             .show_ui(ui, |ui| {
-                ui.selectable_value(&mut self.settings.stop_bits, StopBits::One, "1");
-                ui.selectable_value(&mut self.settings.stop_bits, StopBits::Two, "2");
+                ui.selectable_value(&mut settings.stop_bits, StopBits::One, "1");
+                ui.selectable_value(&mut settings.stop_bits, StopBits::Two, "2");
             });
         ui.end_row();
     }
 
     fn show_parity_selector(&mut self, ui: &mut egui::Ui) {
         ui.label("校验位:");
+        let mut settings = self.settings.lock().unwrap();
         egui::ComboBox::from_id_salt("parity_selector")
-            .selected_text(format!("{:?}", self.settings.parity))
+            .selected_text(format!("{:?}", settings.parity))
             .show_ui(ui, |ui| {
-                ui.selectable_value(&mut self.settings.parity, Parity::None, "None");
-                ui.selectable_value(&mut self.settings.parity, Parity::Odd, "Odd");
-                ui.selectable_value(&mut self.settings.parity, Parity::Even, "Even");
+                ui.selectable_value(&mut settings.parity, Parity::None, "None");
+                ui.selectable_value(&mut settings.parity, Parity::Odd, "Odd");
+                ui.selectable_value(&mut settings.parity, Parity::Even, "Even");
             });
         ui.end_row();
     }
 
     fn show_flow_control_selector(&mut self, ui: &mut egui::Ui) {
         ui.label("流控制:");
+        let mut settings = self.settings.lock().unwrap();
         egui::ComboBox::from_id_salt("flow_control_selector")
-            .selected_text(format!("{:?}", self.settings.flow_control))
+            .selected_text(format!("{:?}", settings.flow_control))
             .show_ui(ui, |ui| {
-                ui.selectable_value(&mut self.settings.flow_control, FlowControl::None, "None");
+                ui.selectable_value(&mut settings.flow_control, FlowControl::None, "None");
                 ui.selectable_value(
-                    &mut self.settings.flow_control,
+                    &mut settings.flow_control,
                     FlowControl::Software,
                     "Software",
                 );
                 ui.selectable_value(
-                    &mut self.settings.flow_control,
+                    &mut settings.flow_control,
                     FlowControl::Hardware,
                     "Hardware",
                 );
@@ -172,32 +200,60 @@ impl SerialPort {
 
     fn show_timeout_input(&mut self, ui: &mut egui::Ui) {
         ui.label("超时时间:");
-        let mut timeout_ms = self.settings.timeout.as_millis() as u32;
+        let timeout_ms = {
+            let settings = self.settings.lock().unwrap();
+            settings.timeout.as_millis() as u32
+        };
+        let mut timeout_ms_mut = timeout_ms;
         if ui
-            .add(egui::DragValue::new(&mut timeout_ms).speed(10).suffix("ms"))
+            .add(
+                egui::DragValue::new(&mut timeout_ms_mut)
+                    .speed(10)
+                    .suffix("ms"),
+            )
             .changed()
         {
-            self.settings.timeout = Duration::from_millis(timeout_ms as u64);
+            let mut settings = self.settings.lock().unwrap();
+            settings.timeout = Duration::from_millis(timeout_ms_mut as u64);
         }
         ui.end_row();
     }
 
     fn show_dtr_checkbox(&mut self, ui: &mut egui::Ui) {
         ui.label("DTR状态:");
-        let mut dtr_enabled = self.settings.dtr_on_open.unwrap_or(false);
-        if ui.checkbox(&mut dtr_enabled, "").changed() {
-            self.settings.dtr_on_open = Some(dtr_enabled);
+        let dtr_enabled = {
+            let settings = self.settings.lock().unwrap();
+            settings.dtr_on_open.unwrap_or(false)
+        };
+        let mut dtr_enabled_mut = dtr_enabled;
+        if ui.checkbox(&mut dtr_enabled_mut, "").changed() {
+            let mut settings = self.settings.lock().unwrap();
+            settings.dtr_on_open = Some(dtr_enabled_mut);
         }
         ui.end_row();
     }
 
     fn show_connection_buttons(&mut self, ui: &mut egui::Ui) {
+        // 连接/断开按钮
         ui.horizontal(|ui| {
-            if ui.button("连接").clicked() {
-                // TODO: 实现连接逻辑
+            if self.is_open {
+                if ui
+                    .add(egui::Button::new("断开").fill(ui.visuals().selection.bg_fill))
+                    .clicked()
+                {
+                    self.is_open = false;
+                    // TODO: 实现断开逻辑
+                }
+            } else {
+                if ui.add(egui::Button::new("连接")).clicked() {
+                    self.is_open = true;
+                    // TODO: 实现连接逻辑
+                }
             }
-            if ui.button("断开").clicked() {
-                // TODO: 实现断开逻辑
+            if self.is_open {
+                ui.colored_label(egui::Color32::from_rgb(50, 220, 50), "●");
+            } else {
+                ui.colored_label(egui::Color32::from_rgb(150, 150, 150), "●");
             }
         });
     }
