@@ -1,5 +1,5 @@
-pub mod client;
 pub mod home_page;
+pub mod master;
 pub mod serial;
-pub mod server;
+pub mod slave;
 pub mod ui;

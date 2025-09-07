@@ -1910,6 +1910,7 @@ dependencies = [
  "data_hook",
  "eframe",
  "env_logger",
+ "log",
  "serialport",
  "tokio",
  "tokio-modbus",

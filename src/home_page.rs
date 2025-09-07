@@ -1,14 +1,14 @@
-use crate::client::Client;
+use crate::master::Master;
 use crate::serial::SerialPort;
-use crate::server::Server;
+use crate::slave::Slave;
 use eframe::epaint::text::{FontInsert, InsertFontFamily};
 use eframe::{App, egui, icon_data};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Page {
     Home,
-    Server,
-    Client,
+    Slave,
+    Master,
 }
 
 impl Default for Page {
@@ -21,8 +21,8 @@ impl Default for Page {
 pub struct ModbusTool {
     page: Page,
     serial: SerialPort,
-    server: Server,
-    client: Client,
+    slave: Slave,
+    master: Master,
 }
 
 impl ModbusTool {
@@ -34,12 +34,12 @@ impl ModbusTool {
         self.serial.show(ctx, frame);
     }
 
-    fn server_page(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        self.server.show(ctx, frame);
+    fn slave_page(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        self.slave.show(ctx, frame);
     }
 
-    fn client_page(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        self.client.show(ctx, frame);
+    fn master_page(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        self.master.show(ctx, frame);
     }
 }
 
@@ -51,15 +51,15 @@ impl App for ModbusTool {
                 egui::widgets::global_theme_preference_switch(ui);
                 ui.separator();
                 ui.selectable_value(&mut self.page, Page::Home, "主页");
-                ui.selectable_value(&mut self.page, Page::Server, "服务器");
-                ui.selectable_value(&mut self.page, Page::Client, "客户端");
+                ui.selectable_value(&mut self.page, Page::Slave, "从机");
+                ui.selectable_value(&mut self.page, Page::Master, "主机");
             });
         });
 
         match self.page {
             Page::Home => self.home_page(ctx, frame),
-            Page::Server => self.server_page(ctx, frame),
-            Page::Client => self.client_page(ctx, frame),
+            Page::Slave => self.slave_page(ctx, frame),
+            Page::Master => self.master_page(ctx, frame),
         }
     }
 }

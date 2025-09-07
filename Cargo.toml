@@ -12,3 +12,4 @@ tokio-modbus = { git = "https://github.com/AnlangA/tokio-modbus", branch = "anla
 tokio-serial = "5.4.5"
 serialport = "4.0"
 tokio-util = "0.7.16"
+log = "0.4"
