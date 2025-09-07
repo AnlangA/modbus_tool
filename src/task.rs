@@ -10,6 +10,7 @@ pub struct TaskManager {
     cancel_flag: Arc<AtomicBool>,
     handle_type: Arc<AtomicBool>,
     task_handle: Option<JoinHandle<()>>,
+    runtime: Option<tokio::runtime::Runtime>,
 }
 
 impl Default for TaskManager {
@@ -18,6 +19,7 @@ impl Default for TaskManager {
             cancel_flag: Arc::new(AtomicBool::new(false)),
             handle_type: Arc::new(AtomicBool::new(false)),
             task_handle: None,
+            runtime: None,
         }
     }
 }
@@ -29,17 +31,35 @@ impl TaskManager {
 
     pub fn create_task(&mut self) {
         log::info!("创建新的串口任务");
+
+        // 如果运行时不存在，创建一个
+        if self.runtime.is_none() {
+            log::info!("创建新的 Tokio 运行时");
+            self.runtime =
+                Some(tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime"));
+        }
+
         let cancel_flag = self.cancel_flag.clone();
-        let handle = tokio::spawn(async move {
-            log::info!("串口任务启动");
-            while !cancel_flag.load(Ordering::Relaxed) {
-                // 任务逻辑
-                println!("串口运行中");
-                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-            }
-            log::info!("串口任务退出");
-        });
-        self.task_handle = Some(handle);
+        let handle_type = self.handle_type.clone();
+
+        // 使用运行时创建任务
+        if let Some(ref runtime) = self.runtime {
+            let task_handle = runtime.spawn(async move {
+                log::info!("串口任务启动");
+                while !cancel_flag.load(Ordering::Relaxed) {
+                    // 任务逻辑
+                    if handle_type.load(Ordering::Relaxed) {
+                        println!("master");
+                    } else {
+                        println!("slave");
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                }
+                log::info!("串口任务退出");
+            });
+            self.task_handle = Some(task_handle);
+        }
+
         log::info!("串口任务创建成功");
     }
 

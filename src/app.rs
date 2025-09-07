@@ -44,25 +44,113 @@ impl ModbusTool {
         let current_page = self.page_manager.current_page();
 
         if previous_page != current_page {
-            match current_page {
-                Page::Slave => {
-                    self.task_manager.set_handle_type(false);
-                    log::info!("页面切换到Slave，设置handle_type为false");
+            // 只有在 slave 和 master 之间切换时才需要重新创建任务
+            let should_recreate_task = match (previous_page, current_page) {
+                (Page::Slave, Page::Master) => {
+                    log::info!("从Slave切换到Master，删除slave任务，创建master任务");
+                    true
                 }
-                Page::Master => {
-                    self.task_manager.set_handle_type(true);
-                    log::info!("页面切换到Master，设置handle_type为true");
+                (Page::Master, Page::Slave) => {
+                    log::info!("从Master切换到Slave，删除master任务，创建slave任务");
+                    true
                 }
-                Page::Home => {
-                    log::info!("页面切换到Home，保持handle_type不变");
+                (Page::Home, Page::Slave) => {
+                    log::info!("从Home切换到Slave，创建slave任务");
+                    true
                 }
+                (Page::Home, Page::Master) => {
+                    log::info!("从Home切换到Master，创建master任务");
+                    true
+                }
+                (Page::Slave, Page::Home) | (Page::Master, Page::Home) => {
+                    log::info!("切换到Home页面，删除任务");
+                    // 删除现有任务
+                    self.task_manager.delete_task();
+                    false
+                }
+                _ => false,
+            };
+
+            if should_recreate_task {
+                // 删除现有任务
+                self.task_manager.delete_task();
+
+                // 设置新的任务类型
+                match current_page {
+                    Page::Slave => {
+                        self.task_manager.set_handle_type(false);
+                        log::info!("设置handle_type为false (slave)");
+                    }
+                    Page::Master => {
+                        self.task_manager.set_handle_type(true);
+                        log::info!("设置handle_type为true (master)");
+                    }
+                    Page::Home => {}
+                }
+
+                // 如果串口已连接，创建新任务
+                if self.serial.is_connected() {
+                    log::info!("串口已连接，创建新任务");
+                    self.task_manager.create_task();
+                }
+            } else {
+                // 只设置任务类型，不重新创建任务
+                match current_page {
+                    Page::Slave => {
+                        self.task_manager.set_handle_type(false);
+                        log::info!("页面切换到Slave，设置handle_type为false");
+                    }
+                    Page::Master => {
+                        self.task_manager.set_handle_type(true);
+                        log::info!("页面切换到Master，设置handle_type为true");
+                    }
+                    Page::Home => {
+                        log::info!("页面切换到Home，保持handle_type不变");
+                    }
+                }
+            }
+        }
+    }
+
+    fn handle_serial_connection(&mut self) {
+        let is_connected = self.serial.is_connected();
+        static mut LAST_CONNECTION_STATE: bool = false;
+
+        unsafe {
+            if is_connected != LAST_CONNECTION_STATE {
+                if is_connected {
+                    log::info!("检测到串口连接，创建任务");
+                    // 根据当前页面类型设置任务类型
+                    match self.page_manager.current_page() {
+                        Page::Slave => {
+                            self.task_manager.set_handle_type(false);
+                            log::info!("当前页面是Slave，创建slave任务");
+                        }
+                        Page::Master => {
+                            self.task_manager.set_handle_type(true);
+                            log::info!("当前页面是Master，创建master任务");
+                        }
+                        Page::Home => {
+                            // 默认创建slave任务
+                            self.task_manager.set_handle_type(false);
+                            log::info!("当前页面是Home，默认创建slave任务");
+                        }
+                    }
+                    self.create_task();
+                } else {
+                    log::info!("检测到串口断开，删除任务");
+                    self.delete_task();
+                }
+                LAST_CONNECTION_STATE = is_connected;
             }
         }
     }
 
     fn show_current_page(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         match self.page_manager.current_page() {
-            Page::Home => self.serial.show(ctx, frame),
+            Page::Home => {
+                self.serial.show(ctx, frame);
+            }
             Page::Slave => self.slave.show(ctx, frame),
             Page::Master => self.master.show(ctx, frame),
         }
@@ -104,6 +192,9 @@ impl App for ModbusTool {
                 self.handle_page_change();
             }
         });
+
+        // 监测串口连接状态
+        self.handle_serial_connection();
 
         // 显示当前页面
         self.show_current_page(ctx, frame);

@@ -98,6 +98,10 @@ impl SerialPort {
         value
     }
 
+    pub fn is_connected(&self) -> bool {
+        self.is_open.load(Ordering::Relaxed)
+    }
+
     pub fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
             self.show_connection_buttons(ui);
