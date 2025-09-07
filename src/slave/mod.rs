@@ -1,12 +1,7 @@
 use eframe::*;
 
+#[derive(Debug, Default)]
 pub struct Slave {}
-
-impl Default for Slave {
-    fn default() -> Self {
-        Slave {}
-    }
-}
 
 impl Slave {
     pub fn show(&mut self, _ctx: &egui::Context, _frame: &mut eframe::Frame) {

@@ -1,12 +1,7 @@
 use eframe::*;
 
+#[derive(Debug, Default)]
 pub struct Master {}
-
-impl Default for Master {
-    fn default() -> Self {
-        Master {}
-    }
-}
 
 impl Master {
     pub fn show(&mut self, _ctx: &egui::Context, _frame: &mut eframe::Frame) {

@@ -1,7 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
 use eframe::egui;
-use modbus_tool::home_page::*;
+use modbus_tool::app::ModbusTool;
+use modbus_tool::app_ui::load_icon_data;
 
 fn main() -> eframe::Result {
     env_logger::init();

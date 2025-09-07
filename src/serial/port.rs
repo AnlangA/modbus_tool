@@ -4,10 +4,10 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
 };
-use std::thread;
 use std::time::Duration;
 use tokio_serial::*;
 
+#[derive(Debug)]
 pub struct SerialPort {
     list: Vec<(String, String)>,
     selected: String,
@@ -17,14 +17,9 @@ pub struct SerialPort {
     is_open: Arc<AtomicBool>,
     //port打开之后，设置发生变化了需要更新设置
     need_update: Arc<AtomicBool>,
-    //取消标志，用于取消异步任务
-    cancel_flag: Arc<AtomicBool>,
-    //标志要启动master还是slave
-    handle_type: Arc<AtomicBool>,
-    //异步任务句柄，用于取消异步任务
-    task_handle: Option<thread::JoinHandle<()>>,
 }
 
+#[derive(Debug)]
 pub struct PortSettings {
     /// The port name, usually the device path
     pub path: String,
@@ -67,9 +62,6 @@ impl Default for SerialPort {
             settings: Arc::new(Mutex::new(PortSettings::default())),
             is_open: Arc::new(AtomicBool::new(false)),
             need_update: Arc::new(AtomicBool::new(false)),
-            cancel_flag: Arc::new(AtomicBool::new(false)),
-            handle_type: Arc::new(AtomicBool::new(false)),
-            task_handle: None,
         };
         port.list_ports();
         port.selected = port
@@ -82,43 +74,6 @@ impl Default for SerialPort {
 }
 
 impl SerialPort {
-    pub fn create_task(&mut self) {
-        // 创建任务
-        info!("创建新的串口任务");
-        let cancel_flag = self.cancel_flag.clone();
-        let handle = thread::spawn(move || {
-            info!("串口任务启动");
-            while !cancel_flag.load(Ordering::Relaxed) {
-                // 任务逻辑
-                thread::sleep(Duration::from_millis(100));
-            }
-            info!("串口任务退出");
-        });
-        self.task_handle = Some(handle);
-        info!("串口任务创建成功");
-    }
-
-    pub fn delete_task(&mut self) {
-        // 删除任务
-        info!("删除串口任务");
-        if let Some(handle) = self.task_handle.take() {
-            info!("设置取消标志，等待任务退出");
-            self.cancel_flag.store(true, Ordering::Relaxed);
-            handle.join().unwrap_or_default();
-            info!("串口任务删除成功");
-        } else {
-            info!("没有正在运行的串口任务");
-        }
-    }
-
-    pub fn recreate_task(&mut self) {
-        // 删除原有任务，创建新任务
-        self.delete_task();
-        self.cancel_flag = Arc::new(AtomicBool::new(false));
-        self.create_task();
-        info!("串口任务重新创建成功");
-    }
-
     // is_open 字段的访问方法
     pub fn set_is_open(&self, value: bool) {
         self.is_open.store(value, Ordering::Relaxed);
@@ -140,30 +95,6 @@ impl SerialPort {
     pub fn get_need_update(&self) -> bool {
         let value = self.need_update.load(Ordering::Relaxed);
         info!("获取 need_update: {}", value);
-        value
-    }
-
-    // cancel_flag 字段的访问方法
-    pub fn set_cancel_flag(&self, value: bool) {
-        self.cancel_flag.store(value, Ordering::Relaxed);
-        info!("设置 cancel_flag: {}", value);
-    }
-
-    pub fn get_cancel_flag(&self) -> bool {
-        let value = self.cancel_flag.load(Ordering::Relaxed);
-        info!("获取 cancel_flag: {}", value);
-        value
-    }
-
-    // handle_type 字段的访问方法
-    pub fn set_handle_type(&self, value: bool) {
-        self.handle_type.store(value, Ordering::Relaxed);
-        info!("设置 handle_type: {}", value);
-    }
-
-    pub fn get_handle_type(&self) -> bool {
-        let value = self.handle_type.load(Ordering::Relaxed);
-        info!("获取 handle_type: {}", value);
         value
     }
 
