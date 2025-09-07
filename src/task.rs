@@ -32,6 +32,9 @@ impl TaskManager {
     pub fn create_task(&mut self) {
         log::info!("创建新的串口任务");
 
+        // 重置取消标志
+        self.cancel_flag.store(false, Ordering::Relaxed);
+
         // 如果运行时不存在，创建一个
         if self.runtime.is_none() {
             log::info!("创建新的 Tokio 运行时");
@@ -93,5 +96,9 @@ impl TaskManager {
         let value = self.handle_type.load(Ordering::Relaxed);
         log::info!("获取 handle_type: {}", value);
         value
+    }
+
+    pub fn has_task(&self) -> bool {
+        self.task_handle.is_some()
     }
 }
